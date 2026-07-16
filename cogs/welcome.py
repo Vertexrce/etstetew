@@ -10,7 +10,9 @@ SETUP INSTRUCTIONS
 """
 
 import logging
+import os
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import aiosqlite
@@ -18,9 +20,10 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from db import DB_PATH
-
 logger = logging.getLogger(__name__)
+
+# Database lives next to bot.py — override with DB_PATH env var if needed
+DB_PATH: str = os.environ.get("DB_PATH", str(Path(__file__).parent.parent / "bot.db"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -83,10 +86,14 @@ async def _set_config(
 # Embed builder
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _build_welcome_embed(member: discord.Member, embed_name: str, message: str) -> discord.Embed:
+def _build_welcome_embed(
+    member: discord.Member,
+    embed_name: str,
+    message: str,
+) -> discord.Embed:
     member_count = member.guild.member_count or 0
     ordinal      = _ordinal(member_count)
-    timestamp    = datetime.now().strftime("%-m/%-d/%Y %-I:%M %p")   # e.g. 5/22/2026 2:29 PM
+    timestamp    = datetime.now().strftime("%-m/%-d/%Y %-I:%M %p")
 
     embed = discord.Embed(
         title       = f"Welcome To {embed_name}",
@@ -94,7 +101,7 @@ def _build_welcome_embed(member: discord.Member, embed_name: str, message: str) 
             f"Hello {member.mention}, you are the **{ordinal}** member!\n\n"
             f"{message}"
         ),
-        color       = 0x2B2D31,   # dark Discord-like background colour
+        color       = 0x2B2D31,
     )
     embed.set_thumbnail(url=member.display_avatar.url)
     embed.set_footer(text=f"{embed_name} • {timestamp}")
@@ -122,7 +129,10 @@ class Welcome(commands.Cog):
 
         channel = member.guild.get_channel(config["channel_id"])
         if not channel or not isinstance(channel, discord.TextChannel):
-            logger.warning("[Welcome] Channel %s not found in guild %s.", config["channel_id"], member.guild.id)
+            logger.warning(
+                "[Welcome] Channel %s not found in guild %s.",
+                config["channel_id"], member.guild.id,
+            )
             return
 
         try:
@@ -138,7 +148,7 @@ class Welcome(commands.Cog):
     @group.command(name="setup", description="Set up the welcome embed for new members.")
     @app_commands.describe(
         channel    = "Channel where welcome messages will be sent.",
-        embed_name = "Name shown in the embed title and footer (e.g. 'IHN Clan').",
+        embed_name = "Name shown in the embed title and footer (e.g. 'Poseidon').",
         message    = "Custom message shown below the member count line.",
     )
     @app_commands.default_permissions(manage_guild=True)
@@ -151,28 +161,22 @@ class Welcome(commands.Cog):
     ) -> None:
         await interaction.response.defer(ephemeral=True)
         try:
-            await _ensure_table()
             await _set_config(interaction.guild_id, channel.id, embed_name, message)
 
-            # Preview embed
             preview = _build_welcome_embed(interaction.user, embed_name, message)
             await interaction.followup.send(
                 content=(
                     f"✅ Welcome message configured for {channel.mention}.\n"
                     f"Here's a preview of what new members will see:"
                 ),
-                embed   = preview,
-                ephemeral=True,
+                embed    = preview,
+                ephemeral= True,
             )
         except Exception:
             logger.exception("[Welcome] setup error")
             await interaction.followup.send(
-                embed=discord.Embed(
-                    title       = "Error",
-                    description = "An error occurred while saving the configuration. Please try again.",
-                    color       = 0xFF0000,
-                ),
-                ephemeral=True,
+                content  = "An error occurred while saving. Please try again.",
+                ephemeral= True,
             )
 
     @group.command(name="test", description="Send a test welcome message for yourself.")
@@ -180,26 +184,28 @@ class Welcome(commands.Cog):
     async def test(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         try:
-            await _ensure_table()
             config = await _get_config(interaction.guild_id)
             if not config:
                 await interaction.followup.send(
-                    content="⚠️ No welcome config found. Run `/welcome setup` first.",
-                    ephemeral=True,
+                    content  = "⚠️ No welcome config found. Run `/welcome setup` first.",
+                    ephemeral= True,
                 )
                 return
 
             channel = interaction.guild.get_channel(config["channel_id"])
             if not channel or not isinstance(channel, discord.TextChannel):
                 await interaction.followup.send(
-                    content="⚠️ The configured welcome channel no longer exists. Run `/welcome setup` again.",
-                    ephemeral=True,
+                    content  = "⚠️ The configured welcome channel no longer exists. Run `/welcome setup` again.",
+                    ephemeral= True,
                 )
                 return
 
             embed = _build_welcome_embed(interaction.user, config["embed_name"], config["message"])
             await channel.send(embed=embed)
-            await interaction.followup.send(content=f"✅ Test welcome sent to {channel.mention}.", ephemeral=True)
+            await interaction.followup.send(
+                content  = f"✅ Test welcome sent to {channel.mention}.",
+                ephemeral= True,
+            )
         except Exception:
             logger.exception("[Welcome] test error")
             await interaction.followup.send(content="An error occurred. Please try again.", ephemeral=True)
@@ -210,7 +216,9 @@ class Welcome(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         try:
             async with aiosqlite.connect(DB_PATH) as db:
-                await db.execute("DELETE FROM welcome_config WHERE guild_id = ?", (interaction.guild_id,))
+                await db.execute(
+                    "DELETE FROM welcome_config WHERE guild_id = ?", (interaction.guild_id,)
+                )
                 await db.commit()
             await interaction.followup.send(content="✅ Welcome messages disabled.", ephemeral=True)
         except Exception:
