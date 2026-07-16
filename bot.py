@@ -60,10 +60,11 @@ bot = discord.ext.commands.Bot(
 async def on_ready() -> None:
     logger.info("Logged in as %s (ID: %s)", bot.user, bot.user.id)
 
-    # Sync slash commands instantly to your guild during development.
-    # For global sync (takes up to 1 hour), replace the two lines below with:
-    #   await bot.tree.sync()
+    # Copy all global commands into the guild, then sync instantly.
+    # For production global sync (takes up to 1 hour), replace the three
+    # lines below with just:  await bot.tree.sync()
     guild = discord.Object(id=GUILD_ID)
+    bot.tree.copy_global_to(guild=guild)
     await bot.tree.sync(guild=guild)
     logger.info("Slash commands synced to guild %s.", GUILD_ID)
 
